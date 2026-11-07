@@ -92,6 +92,13 @@ void render_set_colors(u8 sky, u8 ground)
  * fills col_info[tc] = {changed, ymin, ymax, min s} */
 u8  col_sig[NRAYS * 4];
 u8  col_info[VIEW_TW * 4];
+/* half mode of rd_cols (render_a.s): columns left for the next frame; opt_half: the setting; rd_half: half mode allowed this frame (not a full redraw); rd_par: the half drawn */
+u8  col_pend[VIEW_TW], rd_half, rd_par;
+#ifdef DEBUG_DET
+u8  opt_half = 0;                   /* (no half mode in the deterministic build: it compares every frame with the C originals) */
+#else
+u8  opt_half = 1;                   /* the setting: while turning, the left and the right half of the view alternate */
+#endif
 void rd_sig(void);
 void rd_ext(u8 chg);
 u16 col_spr[VIEW_TW], spr_new[VIEW_TW];   /* (rd_buckets in sprites_a.s) */
@@ -200,6 +207,7 @@ void render_draw(void)
     }
     /* changed columns: when the rays were cast (the view moved, or something on the map did) the ones whose
      * rays differ from what is on the screen (col_sig, updated in place); none otherwise */
+    rd_half = opt_half && !sig_reset;
     if (cast_mode)
     {
         if (sig_reset)

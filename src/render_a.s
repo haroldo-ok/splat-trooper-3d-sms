@@ -7,6 +7,8 @@
 
         .module render_a
         .include "gen/assets.inc"
+        .include "flavor.inc"                   ; DET_BUILD = 1 in the deterministic build (Makefile): no half mode there
+RD_HALF_N = VIEW_TW * 7 / 12               ; more flagged columns than this (14 of 24): half mode
         .area _DATA
 dr_ws:  .ds 1
 cr_q:   .ds 1
@@ -26,6 +28,7 @@ spr_page: .ds 1
 nu_tile: .ds 2
 rc_tr0: .ds 1
 rc_tr1: .ds 1
+rc_half: .ds 1                        ; this frame draws only one half of the view (see _rd_cols)
 rc_hs:  .ds 1
 ca_c:   .ds 1
 re_chg: .ds 1
@@ -1477,11 +1480,47 @@ nu_row:
 ;; void rd_cols(void) -- draw every tile column flagged in col_info: both
 ;; rays into colbuf, sprites (rd_sprites, C), stage 2 / hand to VRAM and
 ;; the nametable cells when the drawn row range changed
-        .globl  _rd_tc, _rd_sprites, _numvis
+        .globl  _rd_tc, _rd_sprites, _numvis, _col_pend, _rd_half, _rd_par
         .globl  _col_tr0, _col_tr1
+;; Half mode (opt_half, a setting): when more than RD_HALF_N columns are flagged or pending (turning), only the
+;; left or the right half of the view is drawn, alternating from frame to frame; the other columns are marked in col_pend
+;; and drawn as flagged the next time (rd_sig has already taken the new rays as what the screen shows, so the flag
+;; alone would be lost).  Never in a full redraw (rd_half is 0: a new level, a new palette): nothing may be left stale.
 _rd_cols::
+        .if     DET_BUILD
         xor     a
         ld      (_rd_tc),a
+        .else
+        ld      hl,#_col_info
+        ld      de,#_col_pend
+        ld      b,#VIEW_TW
+        ld      c,#0                    ; c = columns flagged or pending
+rc_cnt: ld      a,(de)
+        or      (hl)
+        jr      z,00004$
+        inc     c
+00004$: inc     de
+        inc     hl
+        inc     hl
+        inc     hl
+        inc     hl
+        djnz    rc_cnt
+        xor     a
+        ld      (rc_half),a
+        ld      a,(_rd_half)
+        or      a
+        jr      z,00005$
+        ld      a,c
+        cp      #RD_HALF_N + 1
+        jr      c,00005$
+        ld      a,#1
+        ld      (rc_half),a
+        ld      a,(_rd_par)
+        xor     #1
+        ld      (_rd_par),a
+00005$: xor     a
+        ld      (_rd_tc),a
+        .endif
 rc_loop:
         ld      a,(_rd_tc)
         ld      l,a
@@ -1492,7 +1531,37 @@ rc_loop:
         add     hl,de
         ld      a,(hl)
         or      a
+        .if     DET_BUILD
         jp      z,rc_next
+        .else
+        jr      nz,rc_flag
+        push    hl                      ; not flagged: pending from an earlier frame?
+        call    rc_pend
+        ld      a,(hl)
+        pop     hl
+        or      a
+        jp      z,rc_next
+        ld      (hl),#1                 ; drawn as flagged
+rc_flag:
+        ld      a,(rc_half)
+        or      a
+        jr      z,rc_do
+        ld      a,(_rd_tc)              ; the left and the right half alternate
+        cp      #VIEW_TW / 2
+        sbc     a,a                     ; 0 right half, 0xFF left
+        ld      e,a
+        ld      a,(_rd_par)
+        xor     e
+        and     #1                      ; the other half: left for the next frame
+        jr      z,rc_do
+        call    rc_pend
+        ld      (hl),#1
+        jp      rc_next
+rc_do:  push    hl
+        call    rc_pend
+        ld      (hl),#0
+        pop     hl
+        .endif
         inc     hl
         ld      a,(hl)          ; ymin
         inc     hl
@@ -1607,6 +1676,17 @@ rc_next:
         cp      #VIEW_TW
         jp      c,rc_loop
         ret
+.if     DET_BUILD
+.else
+;; hl = &col_pend[rd_tc] (uses a, de)
+rc_pend:
+        ld      a,(_rd_tc)
+        ld      e,a
+        ld      d,#0
+        ld      hl,#_col_pend
+        add     hl,de
+        ret
+.endif
 
 ;; void cast_all(void) -- every 4th ray, then each group of 4 refined: rays
 ;; between two rays on the same face are interpolated, the others cast

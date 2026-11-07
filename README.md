@@ -177,7 +177,7 @@ work), and a direction moves the player for as long as it was held within the fr
 * **VRAM**: view 288 tiles + 3 flat + HUD 112 + weapon <= 28 = 431 < 448 (`wl_hud.py` asserts).  `HUD_T0` = 291;
   the 112 HUD tiles are static 78, face 16, weapon icon 18, and the weapon sprites follow.
 * **Banks**: slot 0 (0x0000 - 0x3FFF) is bank 0, always mapped: `main hw snd render mathz level plat0`, the asm
-  and the generated tables.  It has **700 bytes free** in the release build (400 in debug, 115 in DET), so it is
+  and the generated tables.  It has **580 bytes free** in the release build (270 in debug, 115 in DET), so it is
   nearly full: new code goes into the banked banks.  Those are switched into slot 1 (0x4000 - 0x7FFF): 1 - 4 the game
   (`wl_play/main/game` + the random table, `wl_agent`, `wl_state/act1`, `wl_act2`), 5 `vid hud input weapon
   inter`, 6 `scr menu` + the screen tables, 7 `save`, 8 `snd_ctl` + the sound tables.  Slot 2 (0x8000 - 0xBFFF)
@@ -192,8 +192,9 @@ work), and a direction moves the player for as long as it was held within the fr
 ### Speed
 
 smstest, NTSC, game frames per second (192 x 96 view, sound on, `tools/bench.py`): walking through the first
-rooms and doors **16.7**; turning in place (every ray changes) **5.0**; a room with enemies and statics, moving
-and turning **4.0**.  (Before the second optimisation pass: 10.8 / 4.2 / 3.0.  The 224 x 80 view before the
+rooms and doors **16.4**; turning in place (every ray changes) **7.5**; a room with enemies and statics, moving
+and turning **5.8**.  (Before the half redraw below: 16.7 / 5.0 / 4.0; before the second optimisation pass: 10.8 /
+4.2 / 3.0.  The 224 x 80 view before the
 front end: 12.3 / 4.5 / 3.5; 5.7 / 3.0 / 2.25 before the first optimisation pass.)  The turning and room runs
 are 16 - 20 game frames, so one frame is about 6%; the walking run is 250 - 290.  What was done, by the
 profile:
@@ -216,7 +217,27 @@ profile:
   and is written only when it changes, and a moving view redraws only the columns whose rays differ from the
   screen.
 
-What is left is mostly the VRAM copy (`s2_rows`: 4 bytes per tile row, 27 cycles apart as the VDP requires): the
+**Half redraw while turning** (`rd_cols`, `opt_half`, on by default): when more than 7/12 of the tile columns are
+flagged (turning, a busy room), only the left or the right half of the view is drawn, alternating each frame; the
+columns left out are marked in `col_pend` and drawn as flagged the next time (`rd_sig` has already taken the new rays
+as what the screen shows, so the flag alone would be lost).  Not in a full redraw (a new level or palette).  The cost is
+a seam where the two halves are a frame apart while the view moves (an interleaved-column version was tried: it makes
+the floor and ceiling edges comb).  The DET build has no half mode (`build_*/flavor.inc` makes `DET_BUILD` for
+`render_a.s`): it has to match the C originals frame by frame.  `tests/t_half.txt` checks that nothing stays pending
+after a turn.
+
+**Narrower views**, a build-time choice: `VIEW_W=160 make` or `VIEW_W=128 make` (`tools/make_views.sh` makes
+`wolf3d_192.sms`, `wolf3d_160.sms`, `wolf3d_128.sms`).  The field of view stays the same, so the picture is narrower,
+not cropped.  With the half redraw, walk / turn / room: 192: 16.4 / 7.5 / 5.8; 160: 17.5 / 8.8 / 6.2; 128: 18.6 / 10.5 /
+7.0.  The height has to stay 96: the asm addresses a column of the view as 12 tiles (`tc * 384`), and a 160 x 80 or
+128 x 64 build draws garbage.  A runtime choice would need those loops to take the width from a variable.
+
+Where the time goes now when walking (a frame is ~223k cycles): sprites 27% (`DrawScaleds`: `in_view`, the projection
+`xf_post` with its two divisions, `add_sprite`), the actors 25% (the player's `Thrust` / `ClipMove`, the standing
+guard's sight check), `render_draw` 23%, `render_cast` 11%: no single item above 8%, so more assembly is worth
+1 - 3% a routine.  The divisions of the projection can't become a reciprocal table without changing the picture.
+
+What is left when turning is mostly the VRAM copy (`s2_rows`: 4 bytes per tile row, 27 cycles apart as the VDP requires): the
 view's 288 tiles are 9,216 bytes, 249 k cycles, **4.2 console frames** whatever else is done.  When every column
 is redrawn that is about 29% of a game frame (turning in place), and it caps a full redraw at about 14 frames a
 second before a single ray is cast.  Next on the profile of walking: `in_view` (called ~10,000 times in the
@@ -267,9 +288,9 @@ bench), `xf_post`, `T_Path`'s slow path and `MoveObj`.
 | `tools/port_game.py` `patch_game.py` `gen_states.py` | the one-off translation of the Genesis sources (see above) |
 | `tools/sms.py` `packer.py` `checkrom.py` | SMS colour and tile formats, bank packing, the post-link check of the map (bank overflows) |
 | `tools/smstest/` | the headless emulator (C; `make -C tools/smstest`); `st.sh` runs it |
-| `tools/setup_toolchain.sh` `fetch_data.sh` `make_zip.sh` | install the toolchain, download the id data, make the sources zip |
+| `tools/setup_toolchain.sh` `fetch_data.sh` `make_zip.sh` `make_views.sh` | install the toolchain, download the id data, make the sources zip |
 | `tools/bench.py` `prof_wolf.py` `refview.py` `docshots.py` | benchmarks, profiler, the float reference renderer, the screenshots of `docs/` |
-| `tests/` | `run_all.sh`, the smstest scripts, `t_audio.py`, `t_scores.py`, `check_view.py`, `det/` (equivalence), `bench/` |
+| `tests/` | `run_all.sh`, the smstest scripts (`t_half.txt`: the half redraw), `t_audio.py`, `t_scores.py`, `check_view.py`, `det/` (equivalence), `bench/` |
 | `docs/` | screenshots |
 
 ## Credits and licence

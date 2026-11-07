@@ -62,8 +62,14 @@ $(OUT):
 
 # the converters (tools/build_assets.py) need the id data (tools/fetch_data.sh); make NOGEN=1 builds from the
 # generated files of gen/ that come with the sources
+# VIEW_W (192, 160 or 128): the width of the view in pixels, see tools/render_gen.py; gen/ is made again when it changes
 ifneq ($(NOGEN),1)
-gen/assets.h gen/assets.inc gen/assets_tab.c gen/rndtable.c gen/data.bin: tools/*.py src/cartram.h
+VIEW_W ?= 192
+export VIEW_W
+gen/view_w: FORCE
+	@echo $(VIEW_W) | cmp -s - $@ || echo $(VIEW_W) > $@
+FORCE:
+gen/assets.h gen/assets.inc gen/assets_tab.c gen/rndtable.c gen/data.bin: tools/*.py src/cartram.h gen/view_w
 	cd tools && python3 build_assets.py
 endif
 
@@ -85,8 +91,12 @@ $(OUT)/cartsyms.rel: src/cartsyms.s | $(OUT)
 	$(AS) -plosgff -o $@ $<
 $(OUT)/header.rel: src/header.s | $(OUT)
 	$(AS) -plosgff -o $@ $<
-$(OUT)/render_a.rel: src/render_a.s gen/assets.inc | $(OUT)
-	$(AS) -plosgff -o $@ $<
+# the flavour of the build for the asm that differs in it (render_a.s): the DET build compares every frame with the
+# C originals and has no half mode
+$(OUT)/flavor.inc: Makefile | $(OUT)
+	echo 'DET_BUILD = $(if $(filter 1,$(DET)),1,0)' > $@
+$(OUT)/render_a.rel: src/render_a.s gen/assets.inc $(OUT)/flavor.inc | $(OUT)
+	$(AS) -I$(OUT) -plosgff -o $@ $<
 
 define FIXED_RULE
 $(call rel,$(1)): $(1) $(HDRS) | $(OUT)

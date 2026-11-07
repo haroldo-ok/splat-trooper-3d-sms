@@ -26,8 +26,13 @@ Outputs (raw bank images, generated machine code where needed):
 import math, re, os
 import numpy as np
 
-VIEW_W, VIEW_H = 192, 96
-NRAYS = 48
+# the width of the view in pixels (a multiple of 32: 192, 160 or 128): VIEW_W=160 make.  Narrower is faster (fewer
+# columns to draw, fewer rays); the horizontal field of view is the same, so the picture is narrower, not cropped.
+# The height is 96: the asm addresses a column of the view as 12 tiles.
+VIEW_W = int(os.environ.get('VIEW_W', '192'))
+assert VIEW_W in (192, 160, 128), 'VIEW_W: 192, 160 or 128'
+VIEW_H = 96
+NRAYS = VIEW_W // 4
 CY = 48
 MAXS = 110
 FOCALLENGTH, MINDIST, VIEWGLOBAL = 0x5800, 0x5800, 0x10000
