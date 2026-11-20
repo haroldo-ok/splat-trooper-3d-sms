@@ -1,0 +1,23 @@
+symbols build/game.noi
+echo controller only: leave the starting room of level 1
+run 100
+tap 1
+waituntil game_state == 2 600 w1
+hold right
+waituntil pa >= 250 120
+hold none
+run 2
+hold up
+waituntil py >= 0x0380 200
+hold none
+hold left
+waituntil pa <= 60 120
+hold none
+run 2
+hold up
+run 300
+expect py >= 0x0600
+print pa
+hold none
+run 30
+screenshot shots/walkout.ppm

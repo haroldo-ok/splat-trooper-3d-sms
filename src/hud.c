@@ -1,112 +1,86 @@
-/* hud.c - the status area below the view (banked).  Tiles and layout come
- * from tools/wl_hud.py; the numbers are digit glyph tiles in the nametable,
- * the face, weapon icon and keys are uploaded / switched when they change. */
-#include "game/def.h"
+/* hud.c - text, numbers, the trooper's face */
+#include <SMSlib.h>
+#include "defs.h"
 
-#define NT_ADDR(c, r)   (VRAM_NAMETABLE + ((((u16)(HUD_ROW0 + (r))) << 5) + (c)) * 2)
-#define HUD_PAL1        0x0800          /* nametable bit: palette 1 */
+static u8 cur_face = 0xFF;
 
-static u8 hud_face_cur, hud_icon_cur, hud_keys_cur;
-
-extern u8 ui_active;
-
-void hud_load(void) B
+void print_at(u8 x, u8 y, const char *s)
 {
-    u8 row, buf[64], i;
-    rom_to_vram(HUD_STATIC_BANK, (const void *)HUD_STATIC_ADDR, HUD_T0 * 32, HUD_STATIC_TILES * 32);
-    for (row = 0; row < 12; row++)
-    {
-        rom_copy(HUD_NT_BANK, (const void *)(HUD_NT_ADDR + row * 64), buf, 64);
-        for (i = 0; i < 32; i++)
-        {
-            u16 w = (buf[2 * i] | (buf[2 * i + 1] << 8)) & 0x7FF;
-            w += HUD_T0;
-            buf[2 * i] = w & 0xFF;
-            buf[2 * i + 1] = (w >> 8) | 0x08;
-        }
-        vdp_set_addr(NT_ADDR(0, row));
-        for (i = 0; i < 64; i++)
-        {
-            VDPData = buf[i];
-            __asm__("nop\n nop\n nop");
-        }
-    }
-    hud_face_cur = hud_icon_cur = hud_keys_cur = 0xFF;
-}
-
-/* right justified, blank padded; value < 0 counts as 0 */
-static const u8 hud_num_c[5] = { HUD_FLOOR_C, HUD_SCORE_C, HUD_LIVES_C, HUD_HEALTH_C, HUD_AMMO_C };
-static const u8 hud_num_r[5] = { HUD_FLOOR_R, HUD_SCORE_R, HUD_LIVES_R, HUD_HEALTH_R, HUD_AMMO_R };
-static const u8 hud_num_n[5] = { HUD_FLOOR_N, HUD_SCORE_N, HUD_LIVES_N, HUD_HEALTH_N, HUD_AMMO_N };
-
-void hud_number(u8 which, s32 value) B
-{
-    if (ui_active)
-        return;                         /* the front end owns the screen: the play screen is redrawn when it is left */
-    u8 digits[6], n = hud_num_n[which], i, c = hud_num_c[which], r = hud_num_r[which];
-    u8 len = 0;
-    if (value < 0)
-        value = 0;
-    do
-    {
-        digits[len++] = (u8)(value % 10);
-        value /= 10;
-    } while (value && len < n);
-    for (i = 0; i < n; i++)
-    {
-        u16 t = HUD_T0 + HUD_T_DIG + 2 * (i < len ? digits[n - 1 - i < len ? n - 1 - i : 0] : 10);
-        /* digit i of n from the left: position from the right = n - 1 - i */
-        u8 pos = n - 1 - i;
-        if (pos < len)
-            t = HUD_T0 + HUD_T_DIG + 2 * digits[pos];
-        else
-            t = HUD_T0 + HUD_T_DIG + 20;                /* blank */
-        vram_put_word(NT_ADDR(c + i, r), t | HUD_PAL1);
-        vram_put_word(NT_ADDR(c + i, r + 1), (t + 1) | HUD_PAL1);
-    }
-    if (which == HUD_HEALTH)
-    {
-        /* the percent sign sits after the digits (static) */
+    SMS_setNextTileatXY(x, y);
+    while (*s) {
+        u8 c = (u8)*s++;
+        if (c < 32 || c > 90) c = 32;
+        SMS_setTile((FONT_BASE + c - 32) | TILE_PRIORITY);
     }
 }
 
-void hud_face(u8 pic) B
+/* digits: number of characters; | 0x80: blank leading zeros */
+void print_num(u8 x, u8 y, u16 v, u8 digits)
 {
-    if (ui_active)
-        return;                         /* the front end owns the screen: the play screen is redrawn when it is left */
-    u8 bank;
-    u16 addr;
-    if (pic == hud_face_cur)
-        return;
-    hud_face_cur = pic;
-    bank = HUD_FACES_BANK0 + pic / HUD_FACES_PER_BANK;
-    addr = 0x8000 + (pic % HUD_FACES_PER_BANK) * (HUD_FACE_W * HUD_FACE_H * 32);
-    rom_to_vram_safe(bank, (const void *)addr, (HUD_T0 + HUD_T_FACE) * 32, HUD_FACE_W * HUD_FACE_H * 32);
+    char buf[7];
+    u8 blank = digits & 0x80;
+    u8 i;
+    digits &= 0x7F;
+    i = digits;
+    buf[digits] = 0;
+    while (i) {
+        i--;
+        if (blank && v == 0 && i != digits - 1) buf[i] = ' ';
+        else buf[i] = '0' + (u8)(v % 10);
+        v /= 10;
+    }
+    print_at(x, y, buf);
 }
 
-void hud_weapon(u8 weapon) B
+static void hud_labels(void)
 {
-    if (ui_active)
-        return;                         /* the front end owns the screen: the play screen is redrawn when it is left */
-    if (weapon == hud_icon_cur || weapon > 3)
-        return;
-    hud_icon_cur = weapon;
-    rom_to_vram_safe(HUD_ICONS_BANK, (const void *)(HUD_ICONS_ADDR + weapon * (HUD_ICON_W * HUD_ICON_H * 32)),
-                     (HUD_T0 + HUD_T_ICON) * 32, HUD_ICON_W * HUD_ICON_H * 32);
+    print_at(1, 1, "SCORE");
+    print_at(21, 1, "LEVEL");
+    print_num(27, 1, level + 1, 1);
 }
 
-void hud_keys(u8 keys) B
+static void face_update(void)
 {
-    if (ui_active)
-        return;                         /* the front end owns the screen: the play screen is redrawn when it is left */
-    u16 t;
-    if (keys == hud_keys_cur)
-        return;
-    hud_keys_cur = keys;
-    t = HUD_T0 + HUD_T_KEYS + ((keys & 1) ? 2 : 0);
-    vram_put_word(NT_ADDR(HUD_KEYGOLD_C, HUD_KEYGOLD_R), t | HUD_PAL1);
-    vram_put_word(NT_ADDR(HUD_KEYGOLD_C, HUD_KEYGOLD_R + 1), (t + 1) | HUD_PAL1);
-    t = HUD_T0 + HUD_T_KEYS + ((keys & 2) ? 4 : 0);
-    vram_put_word(NT_ADDR(HUD_KEYSILVER_C, HUD_KEYSILVER_R), t | HUD_PAL1);
-    vram_put_word(NT_ADDR(HUD_KEYSILVER_C, HUD_KEYSILVER_R + 1), (t + 1) | HUD_PAL1);
+    u8 f;
+    if (health == 0) f = 4;
+    else if (face_ouch) f = 5;
+    else if (health > 75) f = 0;
+    else if (health > 50) f = 1;
+    else if (health > 25) f = 2;
+    else f = 3;
+    if (f != cur_face) {
+        cur_face = f;
+        SMS_mapROMBank(MISC_BANK);
+        SMS_loadTiles(face_tiles + (u16)f * 512, 256 + SAT_FACE, 512);
+    }
+}
+
+void hud_draw(void)
+{
+    u8 d = hud_dirty;
+    if (face_ouch && cur_face != 5) d |= 8;
+    if (!d) return;
+    hud_dirty = 0;
+    if (d & 16) { print_at(0, 1, " SPLAT DR. GLOOP'S MEGA-BOT!   "); d &= ~4; }
+    if (d & 32) { print_at(0, 1, "                                "); hud_labels(); d |= 4; }
+    if (msg_timer) d &= ~4;
+    if (d & 1) print_num(4, 20, health, 0x83);
+    if (d & 2) print_num(24, 20, ammo, 0x82);
+    if (d & 4) print_num(7, 1, score, 5);
+    if (d & 9) face_update();
+}
+
+void hud_full(void)
+{
+    u8 x, y;
+    cur_face = 0xFF;
+    hud_labels();
+    /* the face cells point at the 16 face tiles in the sprite area */
+    for (y = 0; y < 4; y++) {
+        SMS_setNextTileatXY(14, 17 + y);
+        for (x = 0; x < 4; x++)
+            SMS_setTile((256 + SAT_FACE + y * 4 + x) | TILE_PRIORITY);
+    }
+    hud_dirty = 0x0F;
+    hud_draw();
 }

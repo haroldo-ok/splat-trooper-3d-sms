@@ -1,0 +1,10 @@
+symbols build/game.noi
+psglog /tmp/psg.log
+run 120
+tap 1
+waituntil game_state == 2 600 w1
+hold 1
+run 60
+hold none
+run 30
+psgstop

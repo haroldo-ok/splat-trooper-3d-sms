@@ -1,0 +1,16 @@
+symbols build/game.noi
+run 100
+tap 1
+run 5
+poke level 1 w1
+waituntil game_state == 2 600 w1
+poke px 0x0380
+poke py 0x0880
+poke pa 896
+run 90
+screenshot shots/gal_candy.ppm
+poke px 0x0B80
+poke py 0x0B80
+poke pa 768
+run 90
+screenshot shots/gal_imp.ppm

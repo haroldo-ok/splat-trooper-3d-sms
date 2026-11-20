@@ -1,0 +1,5 @@
+symbols build/game.noi
+run 100
+tap 1
+run 40
+screenshot shots/x_intro.ppm

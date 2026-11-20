@@ -1,0 +1,24 @@
+symbols build/game.noi
+run 100
+tap 1
+waituntil game_state == 2 600 w1
+run 10
+poke px 0x1180
+poke py 0x0280
+poke pa 0
+run 30
+screenshot shots/f0.ppm
+hold 1
+run 10
+screenshot shots/f1.ppm
+run 60
+hold none
+run 30
+screenshot shots/f2.ppm
+print score
+print ammo w1
+print health w1
+poke px 0x1380
+run 60
+screenshot shots/f3.ppm
+print health w1

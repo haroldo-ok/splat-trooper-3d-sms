@@ -1,8 +1,7 @@
-#!/bin/bash
-# smstest with banked-call attribution for the profiler.
-# usage: tools/st.sh <rom> <script>   (*_dbg.sms uses build_dbg/ "make DEBUG=1", *_det.sms uses build_det/ "make DET=1")
-cd "$(dirname "$0")/.."
-B=build
-case "$1" in *_dbg.sms) B=build_dbg;; *_det.sms) B=build_det;; esac
-export SMSTEST_BCALL=0x$(awk '/___sdcc_bcall_ehl/{print $1; exit}' $B/game.map | sed 's/^0*//')
-exec tools/smstest/smstest "$@"
+#!/bin/sh
+# run a playtest and convert screenshots to png
+export PATH=$HOME/.devkitsms/bin:$PATH
+smstest splat_trooper_3d.sms "$@"; r=$?
+for f in shots/*.ppm; do [ -f "$f" ] && python3 -c "
+from PIL import Image; Image.open('$f').resize((512,384),Image.NEAREST).save('${f%.ppm}.png')" && rm "$f"; done
+exit $r

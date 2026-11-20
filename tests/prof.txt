@@ -1,0 +1,11 @@
+symbols build/game.noi
+run 120
+tap 1
+waituntil game_state == 2 600 w1
+run 30
+profstart
+hold right
+run 300
+profstop
+profdump /tmp/prof.out
+print frames_drawn

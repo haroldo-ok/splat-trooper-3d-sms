@@ -1,0 +1,29 @@
+symbols build/game.noi
+run 100
+tap 1
+waituntil game_state == 2 600 w1
+hold up
+run 200
+hold up+right
+run 120
+hold up+1
+run 200
+hold left
+run 100
+hold up+2+left
+run 200
+hold down+1
+run 150
+hold up+left+1
+run 400
+hold up+right+1
+run 400
+hold none
+run 60
+expectpace 0
+spmin
+print frames_drawn
+print health w1
+print score
+expect game_state >= 1 w1
+screenshot shots/soak.ppm

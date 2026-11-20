@@ -1,0 +1,23 @@
+symbols build/game.noi
+run 120
+expectvdp display 1
+expectcolors 8
+screenshot shots/t_title.ppm
+tap 1
+run 30
+waituntil game_state == 2 600 w1
+run 60
+screenshot shots/t_game0.ppm
+expect health == 100 w1
+hold up
+run 60
+hold none
+run 20
+screenshot shots/t_game1.ppm
+hold right
+run 40
+hold none
+run 20
+screenshot shots/t_game2.ppm
+print fps10 w1
+print frames_drawn
